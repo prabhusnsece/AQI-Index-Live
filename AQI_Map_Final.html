@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Live AQI Map (CPCB-Compliant)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    #map { height: 100vh; margin: 0; padding: 0; }
+    body, html { margin: 0; padding: 0; }
+    .info.legend {
+      background: white;
+      padding: 10px;
+      line-height: 20px;
+      color: #333;
+      font-size: 14px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.3);
+      border-radius: 4px;
+    }
+    .info.legend h4 {
+      margin: 0 0 5px;
+      font-size: 16px;
+    }
+    .info.legend i {
+      width: 18px;
+      height: 18px;
+      float: left;
+      margin-right: 8px;
+      opacity: 0.8;
+    }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+  const map = L.map('map').setView([22.5937, 78.9629], 5);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  const markersLayer = L.layerGroup().addTo(map);
+
+  // AQI computation functions
+  function calcPM25AQI(c) {
+    const bps = [
+      { cLow: 0, cHigh: 30, iLow: 0, iHigh: 50 },
+      { cLow: 31, cHigh: 60, iLow: 51, iHigh: 100 },
+      { cLow: 61, cHigh: 90, iLow: 101, iHigh: 200 },
+      { cLow: 91, cHigh: 120, iLow: 201, iHigh: 300 },
+      { cLow: 121, cHigh: 250, iLow: 301, iHigh: 400 },
+      { cLow: 251, cHigh: 500, iLow: 401, iHigh: 500 },
+    ];
+    for (const bp of bps) {
+      if (c >= bp.cLow && c <= bp.cHigh) {
+        return Math.round(((bp.iHigh - bp.iLow)/(bp.cHigh - bp.cLow))*(c - bp.cLow) + bp.iLow);
+      }
+    }
+    return null;
+  }
+
+  function calcPM10AQI(c) {
+    const bps = [
+      { cLow: 0, cHigh: 50, iLow: 0, iHigh: 50 },
+      { cLow: 51, cHigh: 100, iLow: 51, iHigh: 100 },
+      { cLow: 101, cHigh: 250, iLow: 101, iHigh: 200 },
+      { cLow: 251, cHigh: 350, iLow: 201, iHigh: 300 },
+      { cLow: 351, cHigh: 430, iLow: 301, iHigh: 400 },
+      { cLow: 431, cHigh: 500, iLow: 401, iHigh: 500 },
+    ];
+    for (const bp of bps) {
+      if (c >= bp.cLow && c <= bp.cHigh) {
+        return Math.round(((bp.iHigh - bp.iLow)/(bp.cHigh - bp.cLow))*(c - bp.cLow) + bp.iLow);
+      }
+    }
+    return null;
+  }
+
+  function loadAQIData() {
+    fetch("http://localhost:3000/api/aqi")
+      .then(res => res.json())
+      .then(data => {
+        markersLayer.clearLayers();
+        data.forEach(station => {
+          const pm25 = station.pm25;
+          const pm10 = station.pm10;
+          const aqiPM25 = calcPM25AQI(pm25);
+          const aqiPM10 = calcPM10AQI(pm10);
+          const finalAQI = Math.max(aqiPM25 || 0, aqiPM10 || 0);
+
+          let color = "green";
+          if (finalAQI <= 50) color = "green";
+          else if (finalAQI <= 100) color = "yellow";
+          else if (finalAQI <= 200) color = "orange";
+          else if (finalAQI <= 300) color = "red";
+          else color = "maroon";
+
+          L.circle([station.lat, station.lon], {
+            color: color,
+            fillColor: color,
+            fillOpacity: 0.5,
+            radius: 8000
+          }).addTo(markersLayer)
+            .bindPopup(`<b>${station.city_name}</b><br>
+            PM2.5: ${pm25} µg/m³<br>
+            PM10: ${pm10} µg/m³<br>
+            CPCB AQI: ${finalAQI}`);
+        });
+      })
+      .catch(err => console.error("Fetch error:", err));
+  }
+
+  loadAQIData();
+  setInterval(loadAQIData, 900000);
+
+  const legend = L.control({ position: "bottomright" });
+  legend.onAdd = function () {
+    const div = L.DomUtil.create("div", "info legend");
+    const grades = [0, 50, 100, 200, 300, 400];
+    div.innerHTML += "<h4>AQI Levels</h4>";
+    for (let i = 0; i < grades.length; i++) {
+      let color = "";
+      if (grades[i] <= 50) color = "green";
+      else if (grades[i] <= 100) color = "yellow";
+      else if (grades[i] <= 200) color = "orange";
+      else if (grades[i] <= 300) color = "red";
+      else color = "maroon";
+
+      div.innerHTML +=
+        '<i style="background:' + color + '"></i> ' +
+        grades[i] + (grades[i + 1] ? '&ndash;' + grades[i + 1] + '<br>' : '+');
+    }
+    return div;
+  };
+  legend.addTo(map);
+</script>
+
+</body>
+</html>
