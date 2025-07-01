@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Live CPCB AQI Data Viewer</title>
+  <style>
+    body { font-family: sans-serif; padding: 1rem; }
+    table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+    th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+    th { background: #f4f4f4; }
+    tr:nth-child(even) { background: #fafafa; }
+  </style>
+</head>
+<body>
+
+<h2>Live Air Quality Data (data.gov.in API)</h2>
+<div id="data"></div>
+
+<script>
+function fetchAQIData() {
+  fetch("https://api.data.gov.in/resource/3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69?api-key=579b464db66ec23bdd000001cdd3946e44ce4aad7209ff7b23ac571b&format=xml&filters[state]=TamilNadu&limit=1000")
+    .then(r => r.text())
+    .then(xmlText => {
+      const parser = new DOMParser();
+      const xml = parser.parseFromString(xmlText, "application/xml");
+      const items = Array.from(xml.querySelectorAll("item"));
+
+      if (items.length === 0) {
+        document.getElementById("data").innerHTML = "<p>No data found for Tamil Nadu.</p>";
+        return;
+      }
+
+      let html = `<table>
+        <tr>
+          <th>City</th>
+          <th>Station</th>
+          <th>Pollutant</th>
+          <th>Min</th>
+          <th>Max</th>
+          <th>Avg</th>
+          <th>Last Updated</th>
+        </tr>`;
+
+      items.forEach(item => {
+        const get = tag => item.querySelector(tag)?.textContent.trim() || 'N/A';
+
+        html += `<tr>
+          <td>${get('city')}</td>
+          <td>${get('station')}</td>
+          <td>${get('pollutant_id')}</td>
+          <td>${get('min_value')}</td>
+          <td>${get('max_value')}</td>
+          <td>${get('avg_value')}</td>
+          <td>${get('last_update')}</td>
+        </tr>`;
+      });
+
+      html += `</table>`;
+      document.getElementById("data").innerHTML = html;
+    })
+    .catch(err => {
+      console.error(err);
+      document.getElementById("data").innerHTML = `<p>Error fetching data: ${err.message}</p>`;
+    });
+}
+
+fetchAQIData();
+</script>
+
+</body>
+</html>
